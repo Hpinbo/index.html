@@ -3,9 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>臻评 · 商家好评 </title>
+    <title>臻评 · 商家好评 & Wi-Fi</title>
+    <!-- 图标库 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- 二维码生成库 -->
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <!-- 腾讯云开发 SDK -->
     <script src="https://static.cloudbase.net/cloudbase-js-sdk/latest/cloudbase.full.js"></script>
     <style>
         * {
@@ -78,6 +81,7 @@
             border: 1px solid var(--border-light);
         }
 
+        /* 商家头部 */
         .shop-header {
             background: var(--btn-bg);
             backdrop-filter: blur(8px);
@@ -96,6 +100,7 @@
             margin-bottom: 6px;
         }
 
+        /* 微信联系区 */
         .wechat-area {
             display: flex;
             align-items: center;
@@ -129,6 +134,7 @@
             opacity: 0.7;
         }
 
+        /* Wi-Fi 卡片 */
         .wifi-section {
             background: var(--wifi-bg);
             backdrop-filter: blur(8px);
@@ -209,6 +215,7 @@
             background: var(--btn-hover);
         }
 
+        /* 好评数量与列表 */
         .review-count-bar {
             display: flex;
             align-items: center;
@@ -310,6 +317,7 @@
             border: 1px solid var(--border-light);
         }
 
+        /* 弹窗通用 */
         .modal-overlay,
         .wechat-guide-overlay,
         .manual-copy-overlay,
@@ -392,6 +400,7 @@
     </style>
 </head>
 <body>
+    <!-- Toast 提示 -->
     <div class="toast-message" id="toastMessage"></div>
 
     <!-- 微信内引导遮罩 -->
@@ -437,27 +446,27 @@
             <div class="copy-wechat-hint">点击复制微信号，快速添加店长</div>
         </div>
 
-        <!-- Wi-Fi 一键连接 (由JS动态渲染) -->
+        <!-- Wi-Fi 区域（JS动态渲染） -->
         <div id="wifiContainer"></div>
 
-        <!-- 剩余好评数 -->
+        <!-- 好评剩余数量 -->
         <div class="review-count-bar" id="reviewCountBar" style="display: none;">
             <span>📝 精选好评</span>
             <span class="count-badge" id="reviewCountBadge">0条</span>
         </div>
 
-        <!-- 好评列表容器 -->
+        <!-- 好评列表 -->
         <div id="reviewsContainer" class="reviews-list">
             <div class="review-card" style="justify-content:center;">⏳ 加载中...</div>
         </div>
 
-        <div class="browser-tip" id="browserTip">✨ 点击复制 → 选择平台 → 自动跳转对应APP</div>
+        <div class="browser-tip">✨ 点击复制 → 选择平台 → 自动跳转对应APP</div>
     </div>
 
     <!-- 平台选择弹窗 -->
     <div class="modal-overlay" id="appChoiceModal">
         <div class="modal-glass">
-            <div class="modal-title" style="font-size:1.5rem; margin-bottom:24px;">选择跳转平台</div>
+            <div style="font-size:1.5rem; font-weight:600; margin-bottom:24px;">选择跳转平台</div>
             <div id="chooseDouyin" class="wifi-btn" style="margin-bottom:14px; justify-content:center;">
                 <i class="fab fa-tiktok"></i> 抖音
             </div>
@@ -470,23 +479,27 @@
 
     <script>
         (function() {
-            const CLOUD_ENV = 'zp111-6gl1npyo592dd6e5';
-            const REVIEWS_COLLECTION = 'reviews';
+            // ==================== 配置区 ====================
+            const CLOUD_ENV = 'zp111-6gl1npyo592dd6e5';   // 你的云环境ID
+            const REVIEWS_COLLECTION = 'reviews';         // 好评集合名
             const urlParams = new URLSearchParams(window.location.search);
-            const shopId = urlParams.get('shopId') || 'billiard_001';
+            const shopId = urlParams.get('shopId') || 'billiard_001'; // 默认店铺
 
+            // ==================== 全局变量 ====================
             let cloudApp = null;
             let isCloudReady = false;
-            let currentReviews = [];
-            let selectedReviewId = null;
+            let currentReviews = [];       // 当前好评数组
+            let selectedReviewId = null;   // 选中要复制的好评ID
             let currentWifi = { ssid: '', password: '' };
 
+            // 设备/环境检测
             const ua = navigator.userAgent.toLowerCase();
             const isWeChat = /micromessenger/.test(ua);
             const isIOS = /iphone|ipad|ipod/.test(ua);
             const isAndroid = /android/.test(ua);
             const isMiBrowser = ua.includes('miui') || ua.includes('xiaomi');
 
+            // ==================== DOM 元素 ====================
             const reviewsContainer = document.getElementById('reviewsContainer');
             const modalOverlay = document.getElementById('appChoiceModal');
             const chooseDouyin = document.getElementById('chooseDouyin');
@@ -507,12 +520,18 @@
             const wifiQrSsid = document.getElementById('wifiQrSsid');
             const closeWifiQrBtn = document.getElementById('closeWifiQrBtn');
 
+            // ==================== 工具函数 ====================
             function showToast(msg, duration = 2500) {
                 toastMessage.style.display = 'block';
                 toastMessage.textContent = msg;
                 setTimeout(() => { toastMessage.style.display = 'none'; }, duration);
             }
 
+            function escapeHtml(str) {
+                return str.replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
+            }
+
+            // ==================== 云开发初始化 ====================
             async function initCloud() {
                 try {
                     cloudApp = cloudbase.init({ env: CLOUD_ENV });
@@ -525,6 +544,7 @@
                 }
             }
 
+            // ==================== 获取商家信息 ====================
             async function loadShopInfo() {
                 if (!isCloudReady) return;
                 try {
@@ -544,11 +564,12 @@
                 }
             }
 
+            // ==================== 获取 Wi-Fi 信息（集合名：wifiConfig） ====================
             async function loadWifiInfo() {
                 if (!isCloudReady) return;
                 try {
                     const res = await cloudApp.callFunction({
-                        name: 'getWifiInfo',
+                        name: 'getWifiInfo',   // 你已部署好的云函数
                         data: { shopId }
                     });
                     if (res.result && res.result.code === 0 && res.result.data) {
@@ -565,13 +586,14 @@
                 renderWifiSection();
             }
 
+            // 渲染 Wi-Fi 卡片
             function renderWifiSection() {
                 if (!currentWifi.ssid) {
                     wifiContainer.innerHTML = '';
                     return;
                 }
                 const html = `
-                    <div class="wifi-section" id="wifiSectionBlock">
+                    <div class="wifi-section">
                         <div class="wifi-info">
                             <div class="wifi-icon-circle"><i class="fas fa-wifi"></i></div>
                             <div>
@@ -590,13 +612,13 @@
                 document.getElementById('showQrBtn')?.addEventListener('click', showWifiQrCode);
             }
 
+            // 一键连 Wi-Fi（复制密码 + 尝试打开系统设置）
             function handleConnectWifi() {
                 if (currentWifi.password && navigator.clipboard) {
                     navigator.clipboard.writeText(currentWifi.password).catch(() => {});
                 }
-                if (isiOS) {
+                if (isIOS) {
                     showToast('请手动打开“设置”>“无线局域网”连接', 3000);
-                    return;
                 } else if (isAndroid) {
                     const intentUrl = 'intent://#Intent;action=android.settings.WIFI_SETTINGS;end;';
                     const iframe = document.createElement('iframe');
@@ -608,6 +630,7 @@
                 showToast(`Wi-Fi “${currentWifi.ssid}” 密码已复制，请手动连接`, 3500);
             }
 
+            // 显示 Wi-Fi 二维码
             function showWifiQrCode() {
                 wifiQrSsid.textContent = currentWifi.ssid;
                 wifiQrCanvas.innerHTML = '';
@@ -628,6 +651,7 @@
                 if (e.target === wifiQrOverlay) wifiQrOverlay.classList.remove('show');
             });
 
+            // ==================== 好评加载与渲染 ====================
             async function loadReviews() {
                 if (!isCloudReady) return [];
                 try {
@@ -649,6 +673,7 @@
                     return;
                 }
                 reviewCountBar.style.display = 'flex';
+                // 打乱并最多显示5条
                 let shuffled = [...reviews];
                 if (shuffled.length > 5) {
                     for (let i = shuffled.length - 1; i > 0; i--) {
@@ -665,12 +690,24 @@
                 reviewCountBadge.textContent = reviews.length + '条';
             }
 
-            function escapeHtml(str) {
-                return str.replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
+            // ==================== 删除好评（云函数） ====================
+            async function deleteReviewById(id) {
+                if (!isCloudReady) return false;
+                try {
+                    const res = await cloudApp.callFunction({
+                        name: 'deleteReview',
+                        data: { reviewId: id }
+                    });
+                    return res.result.code === 0;
+                } catch (e) {
+                    return false;
+                }
             }
 
+            // ==================== 复制文本功能 ====================
             function copyTextToClipboard(text, callback) {
                 if (isMiBrowser) {
+                    // 小米浏览器特殊处理
                     const div = document.createElement('div');
                     div.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:5000;';
                     div.innerHTML = `<div style="background:white;border-radius:32px;padding:28px;max-width:340px;">
@@ -706,6 +743,7 @@
                     if (success) { callback(true); return; }
                 } catch (e) {}
                 document.body.removeChild(textarea);
+                // 最后备用：显示手动复制弹窗
                 manualCopyText.textContent = text;
                 manualCopyOverlay.classList.add('show');
                 callback(false);
@@ -713,19 +751,7 @@
 
             manualCopyCloseBtn.addEventListener('click', () => manualCopyOverlay.classList.remove('show'));
 
-            async function deleteReviewById(id) {
-                if (!isCloudReady) return false;
-                try {
-                    const res = await cloudApp.callFunction({
-                        name: 'deleteReview',
-                        data: { reviewId: id }
-                    });
-                    return res.result.code === 0;
-                } catch (e) {
-                    return false;
-                }
-            }
-
+            // ==================== 微信区域点击 ====================
             document.getElementById('wechatArea').addEventListener('click', () => {
                 const wechat = wechatNumberSpan.innerText;
                 if (wechat && wechat !== '暂无微信号' && wechat !== '未配置') {
@@ -742,6 +768,7 @@
                 }
             });
 
+            // ==================== APP 跳转逻辑 ====================
             function jumpToApp(platform) {
                 const config = {
                     douyin: {
@@ -781,6 +808,7 @@
                 }
             }
 
+            // ==================== 复制按钮事件绑定 ====================
             reviewsContainer.addEventListener('click', (e) => {
                 const btn = e.target.closest('.copy-btn');
                 if (!btn) return;
@@ -788,6 +816,7 @@
                 modalOverlay.classList.add('show');
             });
 
+            // 抖音
             chooseDouyin.addEventListener('click', async () => {
                 if (!selectedReviewId) { modalOverlay.classList.remove('show'); return; }
                 const review = currentReviews.find(r => r.id === selectedReviewId);
@@ -808,6 +837,7 @@
                 }
             });
 
+            // 美团
             chooseMeituan.addEventListener('click', async () => {
                 if (!selectedReviewId) { modalOverlay.classList.remove('show'); return; }
                 const review = currentReviews.find(r => r.id === selectedReviewId);
@@ -831,12 +861,14 @@
             closeModalBtn.addEventListener('click', () => modalOverlay.classList.remove('show'));
             modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) modalOverlay.classList.remove('show'); });
 
+            // 微信内引导
             if (isWeChat) {
                 setTimeout(() => guideOverlay.classList.add('show'), 300);
                 document.getElementById('guideConfirmBtn').addEventListener('click', () => guideOverlay.classList.remove('show'));
                 guideOverlay.addEventListener('click', (e) => { if (e.target === guideOverlay) guideOverlay.classList.remove('show'); });
             }
 
+            // ==================== 启动 ====================
             (async function init() {
                 await initCloud();
                 if (isCloudReady) {
